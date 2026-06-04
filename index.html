@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Enerloop Remote v3</title>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;900&family=Share+Tech+Mono&display=swap');
+:root{
+  --or:#E8622A;--or-lt:#F2845A;--or-bg:#FDF1EC;
+  --bl:#1B5FA8;--bl-lt:#2E7FCF;--bl-bg:#EBF3FB;
+  --gn:#18A86B;--gn-bg:#E8F8F2;
+  --ye:#E8A020;--ye-bg:#FEF6E8;
+  --re:#E02020;--re-bg:#FDEAEA;
+  --bg:#F0F2F5;--white:#fff;
+  --border:#DDE3EC;--text:#1A2640;--dim:#7A90AB;
+  --mono:'Share Tech Mono',monospace;--sans:'Montserrat',sans-serif;
+  --r:14px;--rr:20px;
+  --sh:0 2px 12px rgba(27,95,168,.10),0 1px 3px rgba(0,0,0,.05);
+  --sh-lg:0 6px 24px rgba(27,95,168,.15),0 2px 6px rgba(0,0,0,.07);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100dvh;overflow-x:hidden;}
+
+/* ── HEADER ── */
+header{
+  background:var(--white);border-bottom:3px solid var(--or);
+  padding:14px 18px 12px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:50;box-shadow:var(--sh);
+}
+.hdr-left{display:flex;flex-direction:column;gap:2px;}
+.hdr-brand{font-weight:900;font-size:1.15rem;letter-spacing:-.02em;}
+.hdr-brand .or{color:var(--or);}
+.hdr-brand .bl{color:var(--bl);}
+.hdr-sub{font-family:var(--mono);font-size:.58rem;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;}
+.hdr-conn{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+.conn-dot-wrap{display:flex;align-items:center;gap:6px;}
+.conn-dot{width:9px;height:9px;border-radius:50%;background:var(--re);transition:background .4s;flex-shrink:0;}
+.conn-dot.on{background:var(--gn);box-shadow:0 0 6px var(--gn);}
+.conn-dot.wait{background:var(--ye);}
+.conn-dot.pulse{animation:pulse 1.2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.conn-txt{font-family:var(--mono);font-size:.6rem;color:var(--dim);font-weight:600;}
+.via-txt{font-family:var(--mono);font-size:.55rem;color:var(--bl);font-weight:700;
+  background:var(--bl-bg);padding:2px 7px;border-radius:8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ── CONTENT ── */
+.content{padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 20px);}
+
+/* ── BROKER CONFIG ── */
+.broker-card{background:var(--white);border-radius:var(--rr);padding:16px;box-shadow:var(--sh);margin-bottom:14px;}
+.section-title{font-size:.58rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.14em;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;}
+.section-title::before{content:'';width:3px;height:14px;background:var(--or);border-radius:2px;flex-shrink:0;}
+.input-row{display:flex;gap:8px;align-items:center;margin-bottom:9px;}
+.input-row label{font-family:var(--mono);font-size:.62rem;color:var(--dim);min-width:52px;flex-shrink:0;}
+.input-row input{flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+  padding:9px 11px;font-family:var(--mono);font-size:.75rem;color:var(--text);outline:none;
+  transition:border-color .2s;}
+.input-row input:focus{border-color:var(--bl);}
+.btn-connect{width:100%;padding:13px;background:var(--bl);border:none;border-radius:var(--r);
+  color:#fff;font-family:var(--sans);font-weight:700;font-size:.85rem;cursor:pointer;
+  transition:background .2s,box-shadow .2s;box-shadow:0 3px 10px rgba(27,95,168,.3);}
+.btn-connect:hover{background:#1450a0;}
+.btn-connect.on{background:var(--re);box-shadow:0 3px 10px rgba(224,32,32,.3);}
+
+/* ── FLOW INDICATOR ── */
+.flow-path{background:var(--bl-bg);border:1px solid rgba(27,95,168,.18);border-radius:12px;
+  padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:.6rem;color:var(--bl);font-weight:600;}
+.flow-step{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.flow-icon{font-size:1.1rem;}
+.flow-lbl{font-size:.5rem;color:var(--dim);text-align:center;}
+.flow-arrow-sep{color:var(--bl-lt);font-size:.9rem;margin-top:-6px;}
+
+/* ── ESS STATUS ── */
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.stat-card{background:var(--white);border-radius:var(--r);padding:13px 14px;box-shadow:var(--sh);
+  display:flex;flex-direction:column;gap:6px;position:relative;overflow:hidden;}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent,var(--bl));}
+.stat-icon{font-size:1.2rem;}
+.stat-label{font-size:.52rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;}
+.stat-val{font-family:var(--mono);font-size:1.3rem;font-weight:700;color:var(--accent,var(--bl));line-height:1;}
+.stat-val .unit{font-size:.65rem;font-weight:400;color:var(--dim);}
+.soc-bar-bg{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+.soc-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--re) 0%,var(--ye) 45%,var(--gn) 100%);transition:width 1.2s ease;}
+
+/* ── MODE BAR ── */
+
+/* ── HEALTH ALERTS ── */
+.health-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.hp{display:flex;align-items:center;gap:6px;background:var(--white);
+  border:1px solid var(--border);border-radius:10px;padding:6px 11px;
+  box-shadow:var(--sh);flex:1;min-width:100px;transition:all .3s;}
+.hp.alert{border-color:rgba(224,32,32,.3);background:var(--re-bg);}
+.hp.warn{border-color:rgba(232,160,32,.3);background:var(--ye-bg);}
+.hp-d{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.hp-d.ok{background:var(--gn);box-shadow:0 0 4px var(--gn);}
+.hp-d.wr{background:var(--ye);}.hp-d.er{background:var(--re);box-shadow:0 0 5px var(--re);}
+.hp-d.dm{background:var(--dim);}
+.hp-l{font-size:.5rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;}
+.hp-v{font-family:var(--mono);font-size:.58rem;font-weight:600;margin-left:auto;}
+.mode-bar{background:var(--white);border-radius:var(--r);padding:12px 16px;box-shadow:var(--sh);
+  margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+.mode-dot{width:10px;height:10px;border-radius:50%;background:var(--gn);box-shadow:0 0 7px var(--gn);flex-shrink:0;}
+.mode-label{font-size:.55rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;}
+.mode-val{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--text);margin-left:2px;}
+.mode-ts{margin-left:auto;font-family:var(--mono);font-size:.55rem;color:var(--dim);}
+
+/* ── MODE BUTTONS ── */
+.modes-card{background:var(--white);border-radius:var(--rr);padding:16px;box-shadow:var(--sh);margin-bottom:14px;}
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.mode-btn{position:relative;background:var(--bg);border:2px solid var(--border);
+  border-radius:var(--r);padding:16px 12px;cursor:pointer;text-align:left;
+  transition:all .18s;overflow:hidden;font-family:var(--sans);
+  -webkit-user-select:none;user-select:none;}
+.mode-btn:active{transform:scale(.96);}
+.mode-btn.active{border-color:var(--bc,var(--bl));background:var(--bh,var(--bl-bg));
+  box-shadow:0 4px 16px -4px var(--bs,rgba(27,95,168,.3));}
+.mode-btn.disabled{opacity:.4;pointer-events:none;cursor:default;}
+.btn-dot{position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:50%;
+  background:var(--bc,var(--bl));opacity:0;transition:opacity .25s;box-shadow:0 0 5px var(--bc,var(--bl));}
+.mode-btn.active .btn-dot{opacity:1;}
+.btn-icon{font-size:1.4rem;display:block;margin-bottom:6px;}
+.btn-label{font-weight:700;font-size:.78rem;color:var(--text);display:block;line-height:1.3;}
+.btn-sub{font-family:var(--mono);font-size:.57rem;color:var(--dim);display:block;margin-top:3px;}
+.mode-btn.active .btn-label{color:var(--bc,var(--bl));}
+.sending-overlay{position:absolute;inset:0;background:rgba(255,255,255,.6);
+  display:none;align-items:center;justify-content:center;font-size:.65rem;color:var(--bl);}
+.mode-btn.sending .sending-overlay{display:flex;}
+
+/* ── SLIDERS ── */
+.sliders-card{background:var(--white);border-radius:var(--rr);padding:16px;box-shadow:var(--sh);margin-bottom:14px;}
+.slider-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.slider-row:last-child{margin-bottom:0;}
+.sl-label{font-family:var(--mono);font-size:.6rem;color:var(--dim);width:90px;flex-shrink:0;}
+input[type=range]{flex:1;appearance:none;height:5px;background:var(--border);border-radius:3px;outline:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--or);cursor:pointer;box-shadow:0 2px 6px rgba(232,98,42,.4);border:2px solid #fff;}
+.sl-val{font-family:var(--mono);font-size:.68rem;color:var(--or);width:58px;text-align:right;font-weight:700;}
+
+/* SOURCE SELECT */
+.src-row{margin-top:-6px;}
+.src-sel{flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+  padding:7px 10px;font-family:var(--mono);font-size:.65rem;color:var(--text);outline:none;
+  font-weight:600;cursor:pointer;-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%237A90AB'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:24px;}
+.src-sel:focus{border-color:var(--bl);}
+
+/* ── LOG ── */
+.log-card{background:var(--white);border-radius:var(--rr);padding:16px;box-shadow:var(--sh);}
+.log-box{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;
+  font-family:var(--mono);font-size:.62rem;max-height:160px;overflow-y:auto;}
+.log-entry{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);}
+.log-entry:last-child{border-bottom:none;}
+.lt{color:var(--dim);width:52px;flex-shrink:0;}
+.lm{width:90px;flex-shrink:0;font-weight:700;}
+.lm.ok{color:var(--gn);}.lm.err{color:var(--re);}.lm.send{color:var(--bl);}
+.lr{color:var(--text);}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:translateY(0)}}
+.log-entry{animation:fadeIn .25s;}
+
+/* ══════════ MISSION PROPOSAL OVERLAY (v3) ══════════ */
+.proposal-overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;
+  background:rgba(26,38,64,0.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;align-items:flex-end;justify-content:center;padding:20px;
+  animation:fadeOverlay .25s ease;
+}
+.proposal-overlay.active{display:flex;}
+@keyframes fadeOverlay{from{opacity:0}to{opacity:1}}
+
+.proposal-card{
+  background:var(--white);border-radius:24px 24px 16px 16px;
+  width:100%;max-width:420px;padding:0;box-shadow:0 -10px 40px rgba(0,0,0,.3);
+  overflow:hidden;animation:slideUp .35s cubic-bezier(.2,.9,.3,1.2);
+  margin-bottom:env(safe-area-inset-bottom,0);
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+.pc-header{
+  padding:22px 22px 18px;color:#fff;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--pc-color,var(--bl)) 0%,#000 200%);
+}
+.pc-header::before{
+  content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;
+  background:rgba(255,255,255,.15);border-radius:50%;
+}
+.pc-tag{font-family:var(--mono);font-size:.6rem;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;opacity:.9;margin-bottom:6px;position:relative;}
+.pc-title{display:flex;align-items:center;gap:12px;position:relative;}
+.pc-icon{font-size:2.2rem;}
+.pc-name{font-size:1.25rem;font-weight:900;letter-spacing:-.01em;line-height:1.15;}
+
+.pc-body{padding:18px 22px;}
+.pc-desc{font-size:.85rem;color:var(--text);line-height:1.5;margin-bottom:16px;}
+
+.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+.pc-stat{background:var(--bg);border-radius:12px;padding:12px 14px;
+  display:flex;flex-direction:column;gap:4px;}
+.pc-stat-label{font-size:.55rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;}
+.pc-stat-val{font-family:var(--mono);font-size:1.15rem;font-weight:800;color:var(--text);}
+.pc-stat-val .pcs-unit{font-size:.7rem;color:var(--dim);margin-left:3px;font-weight:400;}
+
+.pc-actions{display:grid;grid-template-columns:1fr 1.5fr;gap:10px;padding:0 22px 22px;}
+.pc-btn{padding:14px;border:none;border-radius:12px;font-family:var(--sans);
+  font-weight:800;font-size:.85rem;cursor:pointer;text-transform:uppercase;
+  letter-spacing:.06em;transition:all .2s;}
+.pc-btn-decline{background:var(--bg);color:var(--dim);border:2px solid var(--border);}
+.pc-btn-decline:hover{background:var(--re-bg);color:var(--re);border-color:var(--re);}
+.pc-btn-accept{background:linear-gradient(135deg,var(--pc-color,var(--bl)) 0%,#000 250%);
+  color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);}
+.pc-btn-accept:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.2);}
+.pc-btn-accept:active{transform:translateY(1px);}
+
+.pc-countdown{padding:10px 22px;background:var(--bg);border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:.65rem;color:var(--dim);text-align:center;letter-spacing:.05em;}
+.pc-countdown strong{color:var(--or);font-weight:700;}
+
+/* ══════════ MISSION RUNNING BANNER (v3) ══════════ */
+.mission-running{display:none;background:linear-gradient(135deg,var(--gn) 0%,#159d62 100%);
+  color:#fff;border-radius:var(--r);padding:14px 16px;margin-bottom:14px;
+  box-shadow:0 4px 14px rgba(24,168,107,.3);
+  align-items:center;gap:12px;animation:fadeIn .3s;}
+.mission-running.active{display:flex;}
+.mission-running.charge{background:linear-gradient(135deg,#1B5FA8 0%,#0d3f72 100%);box-shadow:0 4px 14px rgba(27,95,168,.3);}
+.mission-running.inject{background:linear-gradient(135deg,#E8622A 0%,#C44E1E 100%);box-shadow:0 4px 14px rgba(232,98,42,.3);}
+.mr-icon{font-size:1.6rem;}
+.mr-info{flex:1;}
+.mr-title{font-weight:800;font-size:.85rem;letter-spacing:-.01em;line-height:1.2;}
+.mr-sub{font-family:var(--mono);font-size:.62rem;opacity:.9;margin-top:3px;}
+.mr-timer{font-family:var(--mono);font-size:1.05rem;font-weight:800;
+  background:rgba(255,255,255,.2);padding:6px 12px;border-radius:8px;letter-spacing:.05em;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="hdr-left">
+    <div class="hdr-brand"><span class="or">ENER</span><span class="bl">LOOP</span></div>
+    <div class="hdr-sub">Remote Control · ESS</div>
+  </div>
+  <div class="hdr-conn">
+    <div class="conn-dot-wrap">
+      <div class="conn-dot pulse" id="connDot"></div>
+      <span class="conn-txt" id="connTxt">DÉCONNECTÉ</span>
+    </div>
+    <div class="via-txt" id="viaTxt">— broker non configuré —</div>
+  </div>
+</header>
+
+<div class="content">
+
+  <!-- ══════ MISSION RUNNING BANNER (v3) ══════ -->
+  <div class="mission-running" id="missionRunning">
+    <span class="mr-icon" id="mrIcon">🎯</span>
+    <div class="mr-info">
+      <div class="mr-title" id="mrTitle">Mission</div>
+      <div class="mr-sub" id="mrSub">—</div>
+    </div>
+    <div class="mr-timer" id="mrTimer">—</div>
+  </div>
+
+  <!-- BROKER CONFIG -->
+  <div class="broker-card">
+    <div class="section-title">📡 Connexion broker Cedalo MQTT</div>
+    <div class="input-row">
+      <label>Broker :</label>
+      <input type="text" id="inBroker" placeholder="ws://votre-cedalo:9001" autocomplete="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="input-row">
+      <label>Login :</label>
+      <input type="text" id="inUser" placeholder="optionnel" autocomplete="off" autocorrect="off" autocapitalize="off">
+    </div>
+    <div class="input-row">
+      <label>Mdp :</label>
+      <input type="password" id="inPass" placeholder="optionnel" autocomplete="off" autocorrect="off" autocapitalize="off"><button type="button" onclick="togglePass()" id="btnPass" style="background:none;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:.85rem;flex-shrink:0;">👁</button>
+    </div>
+    <button class="btn-connect" id="btnConnect" onclick="toggleConnect()">🔌 Connecter</button>
+  </div>
+
+  <!-- FLOW INDICATOR -->
+  <div class="flow-path">
+    <div class="flow-step">
+      <span class="flow-icon">📱</span>
+      <span class="flow-lbl">App</span>
+    </div>
+    <span class="flow-arrow-sep">→</span>
+    <div class="flow-step">
+      <span class="flow-icon">☁️</span>
+      <span class="flow-lbl" id="brokerName">Cedalo MQTT</span>
+    </div>
+    <span class="flow-arrow-sep">→</span>
+    <div class="flow-step">
+      <span class="flow-icon">🔧</span>
+      <span class="flow-lbl">Node-RED</span>
+    </div>
+    <span class="flow-arrow-sep">→</span>
+    <div class="flow-step">
+      <span class="flow-icon">⚡</span>
+      <span class="flow-lbl">Victron ESS</span>
+    </div>
+  </div>
+
+  <!-- ESS STATUS -->
+  <div class="status-grid">
+    <div class="stat-card" style="--accent:var(--gn)">
+      <span class="stat-icon">🔋</span>
+      <span class="stat-label">SOC batterie</span>
+      <div class="stat-val" id="rSoc">—<span class="unit">%</span></div>
+      <div class="soc-bar-bg"><div class="soc-bar-fill" id="rSocBar" style="width:0"></div></div>
+    </div>
+    <div class="stat-card" style="--accent:var(--bl)">
+      <span class="stat-icon">⚡</span>
+      <span class="stat-label">Bat. puissance</span>
+      <div class="stat-val" id="rBat">—<span class="unit">W</span></div>
+    </div>
+    <div class="stat-card" style="--accent:var(--or)">
+      <span class="stat-icon">🏭</span>
+      <span class="stat-label">Réseau AC-IN</span>
+      <div class="stat-val" id="rGrid">—<span class="unit">W</span></div>
+    </div>
+    <div class="stat-card" style="--accent:var(--ye)">
+      <span class="stat-icon">☀️</span>
+      <span class="stat-label">Production PV</span>
+      <div class="stat-val" id="rPv">—<span class="unit">W</span></div>
+    </div>
+  </div>
+
+  <!-- HEALTH ROW -->
+  <div class="health-row" id="healthRow">
+    <div class="hp" id="rhEss"><span class="hp-d dm"></span><span class="hp-l">ESS</span><span class="hp-v" id="rhEssV" style="color:var(--dim)">—</span></div>
+    <div class="hp" id="rhMppt"><span class="hp-d dm"></span><span class="hp-l">MPPT</span><span class="hp-v" id="rhMpptV" style="color:var(--dim)">—</span></div>
+    <div class="hp" id="rhTemp"><span class="hp-d dm"></span><span class="hp-l">Temp</span><span class="hp-v" id="rhTempV" style="color:var(--dim)">—</span></div>
+  </div>
+
+  <!-- MODE ACTIF -->
+  <div class="mode-bar">
+    <div class="mode-dot" id="rModeDot"></div>
+    <span class="mode-label">Mode :</span>
+    <span class="mode-val" id="rModeVal">EN ATTENTE…</span>
+    <span class="mode-ts" id="rModeTs">—</span>
+  </div>
+
+  <!-- INFO READ-ONLY -->
+  <div class="broker-card" style="background:linear-gradient(135deg,var(--bl-bg) 0%,#F4F8FC 100%);border-left:4px solid var(--bl);">
+    <div class="section-title">📱 Mode lecture seule</div>
+    <div style="font-size:.78rem;color:var(--text);line-height:1.5;">
+      Cette application reçoit les <strong>propositions de mission</strong> envoyées depuis le dashboard
+      et permet de les <strong>accepter</strong> ou <strong>refuser</strong>.
+      Le pilotage direct se fait depuis le dashboard PC.
+    </div>
+  </div>
+
+  <!-- MQTT LOG -->
+  <div class="log-card">
+    <div class="section-title">📨 Trafic MQTT</div>
+    <div class="log-box" id="mqLog">
+      <div class="log-entry"><span class="lt">—</span><span class="lm send">INIT</span><span class="lr">Configure le broker Cedalo et clique Connecter</span></div>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ══════ PROPOSAL OVERLAY (v3) ══════ -->
+<div class="proposal-overlay" id="proposalOverlay">
+  <div class="proposal-card" id="proposalCard">
+    <div class="pc-header" id="pcHeader">
+      <div class="pc-tag" id="pcTag">— PROPOSITION DE MISSION —</div>
+      <div class="pc-title">
+        <div class="pc-icon" id="pcIcon">🎯</div>
+        <div class="pc-name" id="pcName">Mission</div>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="pc-desc" id="pcDesc">Description de la mission</div>
+      <div class="pc-stats">
+        <div class="pc-stat">
+          <span class="pc-stat-label">Puissance</span>
+          <div class="pc-stat-val"><span id="pcPower">—</span><span class="pcs-unit">W</span></div>
+        </div>
+        <div class="pc-stat">
+          <span class="pc-stat-label">Durée</span>
+          <div class="pc-stat-val"><span id="pcDuration">—</span><span class="pcs-unit">min</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="pc-actions">
+      <button class="pc-btn pc-btn-decline" onclick="respondProposal(false)">✕ Refuser</button>
+      <button class="pc-btn pc-btn-accept" id="pcBtnAccept" onclick="respondProposal(true)">✓ Accepter</button>
+    </div>
+    <div class="pc-countdown">Expire dans <strong id="pcExpire">60s</strong></div>
+  </div>
+</div>
+
+<script>
+let mqClient=null;
+let currentProposal=null;
+let proposalExpireInterval=null;
+let activeMissionExpire=null;
+
+function el(id){return document.getElementById(id);}
+function now(){return new Date().toLocaleTimeString('fr-FR');}
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function mlog(tag,msg,type='ok'){
+  const log=el('mqLog');
+  const d=document.createElement('div');d.className='log-entry';
+  d.innerHTML=`<span class="lt">${now()}</span><span class="lm ${type}">${tag}</span><span class="lr">${msg}</span>`;
+  log.prepend(d);while(log.children.length>40)log.removeChild(log.lastChild);
+}
+
+// ── Connection status ─────────────────────────────────────────────────────────
+function setConnState(state, txt, broker){
+  const dot=el('connDot'), ctxt=el('connTxt'), via=el('viaTxt');
+  dot.className='conn-dot'+(state==='on'?' on':state==='wait'?' wait pulse':' pulse');
+  ctxt.textContent=txt;
+  if(broker)via.textContent='via: '+broker;
+  const bc=el('btnConnect');
+  bc.textContent=state==='on'?'🔌 Déconnecter':'🔌 Connecter';
+  bc.classList.toggle('on',state==='on');
+}
+
+// ── Connect / Disconnect ─────────────────────────────────────────────────────
+function toggleConnect(){
+  if(mqClient && mqClient.connected){
+    mqClient.end(true); mqClient=null;
+    setConnState('off','DÉCONNECTÉ','');
+    el('viaTxt').textContent='— broker non configuré —';
+    mlog('MQTT','Déconnecté manuellement','send');
+    return;
+  }
+  connectBroker();
+}
+
+function connectBroker(){
+  if(typeof mqtt==='undefined'){mlog('ERREUR','Lib MQTT non chargée (CDN ?)','err');return;}
+  const url=el('inBroker').value.trim();
+  if(!url){mlog('ERREUR','Saisis l\'URL du broker Cedalo (ex: ws://cedalo.local:9001)','err');return;}
+  const user=el('inUser').value.trim();
+  const pass=el('inPass').value.trim();
+  const broker_hostname=url.replace(/^wss?:\/\//,'').replace(/\/.*/,'');
+  el('brokerName').textContent=broker_hostname;
+
+  const opts={
+    connectTimeout:15000, reconnectPeriod:0, keepalive:30,
+    clientId:'enerloop-remote-'+Math.random().toString(36).substr(2,6)
+  };
+  if(user){opts.username=user;}
+  if(pass){opts.password=pass;}
+
+  setConnState('wait','CONNEXION…','');
+  mlog('MQTT','→ '+url,'send');
+
+  try{
+    mqClient=mqtt.connect(url,opts);
+    mqClient.on('connect',()=>{
+      setConnState('on','CONNECTÉ',broker_hostname);
+      mlog('MQTT','✓ Connecté à '+broker_hostname,'ok');
+      mqClient.subscribe(['victron/status','victron/ack','victron/mission_proposal','victron/alert'],(err)=>{
+        if(!err)mlog('SUB','status + ack + mission_proposal + alert','ok');
+        else mlog('SUB','Erreur abonnement: '+err.message,'err');
+      });
+    });
+    mqClient.on('message',(topic,payload)=>{
+      const txt=payload.toString();
+      if(topic==='victron/status'){
+        try{
+          const d=JSON.parse(txt);
+          updateStatus(d);
+        }catch{}
+        return; // ne pas loguer chaque status (3s)
+      }
+      if(topic==='victron/mission_proposal'){
+        try{
+          const proposal=JSON.parse(txt);
+          showProposal(proposal);
+          mlog('PROPOSAL ⇣',proposal.name+' · '+proposal.power+'W · '+proposal.duration_min+'min','send');
+        }catch(e){mlog('PROPOSAL ✗','JSON invalide: '+e.message,'err');}
+        return;
+      }
+      if(topic==='victron/alert'){
+        try{
+          const a=JSON.parse(txt);
+          if(a.type==='auto_fallback'){
+            mlog('ALERT ⚠️','Bascule auto '+a.from_source+' → '+a.to_source+' ('+a.reason+')','err');
+          }else{
+            mlog('ALERT','Type: '+(a.type||'?'),'err');
+          }
+        }catch{}
+        return;
+      }
+      if(topic==='victron/ack'){
+        try{
+          const ack=JSON.parse(txt);
+          if(ack.success&&ack.mode){
+            el('rModeVal').textContent=ack.mode;
+            el('rModeTs').textContent=now();
+            mlog('ACK ✓',ack.mode,'ok');
+          }else{
+            mlog('ACK ✗',ack.error||'erreur Modbus','err');
+          }
+        }catch{}
+      }
+    });
+    mqClient.on('error',(e)=>{
+      setConnState('off','ERREUR','');
+      mlog('ERREUR',(e&&e.message)||'connexion refusée','err');
+    });
+    mqClient.on('close',()=>{
+      if(mqClient){setConnState('off','DÉCONNECTÉ','');mlog('MQTT','Connexion fermée','send');}
+    });
+  }catch(e){
+    setConnState('off','ERREUR','');
+    mlog('ERREUR',e.message,'err');
+  }
+}
+
+// ── Update ESS status ─────────────────────────────────────────────────────────
+function updateStatus(d){
+  if(!d||!d.success)return;
+  // SOC
+  const soc=d.soc??0;
+  el('rSoc').innerHTML=soc.toFixed(0)+'<span class="unit">%</span>';
+  el('rSocBar').style.width=Math.min(100,soc)+'%';
+  // Battery
+  const pwr=d.pwrBat??0;
+  el('rBat').innerHTML=(pwr>0?'+':'')+pwr+'<span class="unit">W</span>';
+  el('rBat').style.color=pwr>50?'var(--gn)':pwr<-50?'var(--bl)':'var(--dim)';
+  // Grid
+  const gp=d.gridPwr??0;
+  el('rGrid').innerHTML=(gp>0?'+':'')+gp+'<span class="unit">W</span>';
+  el('rGrid').style.color=gp>20?'var(--or)':gp<-20?'var(--gn)':'var(--dim)';
+  // PV (DC + AC)
+  const pvDC=d.pvPwr??0;
+  const pvAC=d.pvAcOut??0;
+  const pvTotal=d.pvTotal??(pvDC+pvAC);
+  el('rPv').innerHTML=(pvTotal>0?pvTotal:'—')+'<span class="unit">W</span>';
+  // Mode
+  if(d.activeMission){
+    el('rModeVal').textContent=d.activeMission;
+  }
+  // ── MISSION RUNNING BANNER ──
+  if(d.missionExpireAt && d.activeMission && d.activeMission!=='ESS AUTO' && !d.activeMission.startsWith('IDLE')){
+    activeMissionExpire=d.missionExpireAt;
+    const banner=el('missionRunning');
+    let style='', icon='🎯';
+    if(d.activeMission.startsWith('CHARGE RESEAU')){style='charge';icon='⚡';}
+    else if(d.activeMission.startsWith('PRIORITE BAT')||d.activeMission.startsWith('DECHARGE')){style='';icon='🔋';}
+    else if(d.activeMission.startsWith('INJECTION')){style='inject';icon='📤';}
+    banner.className='mission-running active '+style;
+    el('mrIcon').textContent=icon;
+    el('mrTitle').textContent=d.activeMission;
+    el('mrSub').textContent='Puissance '+(d.activeMissionPower||'—')+'W · Durée '+(d.missionDurationMin||'—')+'min';
+  } else if(activeMissionExpire){
+    activeMissionExpire=null;
+    el('missionRunning').className='mission-running';
+  }
+  // ── HEALTH INDICATORS ──
+  // ESS / Passthru
+  const hE=el('rhEss'),hEd=hE.querySelector('.hp-d'),hEv=el('rhEssV');
+  if(d.ess){
+    if(d.ess.passthru_detected){
+      hE.className='hp alert';hEd.className='hp-d er';
+      hEv.textContent='PASSTHRU !';hEv.style.color='var(--re)';
+    }else{
+      hE.className='hp';hEd.className='hp-d ok';
+      hEv.textContent='OK';hEv.style.color='var(--gn)';
+    }
+  }
+  // MPPT
+  const hM=el('rhMppt'),hMd=hM.querySelector('.hp-d'),hMv=el('rhMpptV');
+  if(d.mpptDisabled===true){
+    if(d.mppt_control_working===false){
+      hM.className='hp alert';hMd.className='hp-d er';
+      hMv.textContent='OFF IGNORÉ';hMv.style.color='var(--re)';
+    }else{
+      hM.className='hp warn';hMd.className='hp-d wr';
+      hMv.textContent='COUPÉ';hMv.style.color='var(--ye)';
+    }
+  }else if(d.mpptDisabled===false){
+    hM.className='hp';hMd.className='hp-d ok';
+    hMv.textContent='ACTIF';hMv.style.color='var(--gn)';
+  }
+  // Temp
+  const hT=el('rhTemp'),hTd=hT.querySelector('.hp-d'),hTv=el('rhTempV');
+  const t=d.tempBat;
+  if(t!==null&&t!==undefined){
+    hTv.textContent=t.toFixed(1)+'°C';
+    if(t>45){hT.className='hp alert';hTd.className='hp-d er';hTv.style.color='var(--re)';}
+    else if(t>38||t<5){hT.className='hp warn';hTd.className='hp-d wr';hTv.style.color='var(--ye)';}
+    else{hT.className='hp';hTd.className='hp-d ok';hTv.style.color='var(--gn)';}
+  }
+}
+
+// ══════════ MISSION PROPOSAL OVERLAY (v3) ══════════
+function showProposal(p){
+  if(!p||!p.proposalId)return;
+  currentProposal=p;
+
+  // Couleur du header selon le type
+  const colorMap={soulagement:'#1B5FA8', effacement:'#18A86B', aide:'#E8622A'};
+  const headerColor=p.color||colorMap[p.type]||'#1B5FA8';
+  el('pcHeader').style.setProperty('--pc-color', headerColor);
+  el('pcBtnAccept').style.setProperty('--pc-color', headerColor);
+
+  // Tag (catégorie)
+  const tagMap={
+    soulagement:'⚡ SOULAGEMENT RÉSEAU',
+    effacement: '🔋 EFFACEMENT RÉSEAU',
+    aide:       '📤 AIDE AU RÉSEAU'
+  };
+  el('pcTag').textContent=tagMap[p.type]||'— PROPOSITION DE MISSION —';
+
+  el('pcIcon').textContent=p.icon||'🎯';
+  el('pcName').textContent=p.name||'Mission';
+  el('pcDesc').textContent=p.description||'';
+  el('pcPower').textContent=p.power;
+  el('pcDuration').textContent=p.duration_min;
+
+  // Compte à rebours d'expiration
+  const expiresAt=p.expires_at?new Date(p.expires_at).getTime():Date.now()+60000;
+  if(proposalExpireInterval) clearInterval(proposalExpireInterval);
+  proposalExpireInterval=setInterval(()=>{
+    const remain=Math.max(0, Math.floor((expiresAt-Date.now())/1000));
+    el('pcExpire').textContent=remain+'s';
+    if(remain<=0){
+      clearInterval(proposalExpireInterval);
+      hideProposal();
+      mlog('PROPOSAL ⏱','Proposition expirée','err');
+    }
+  }, 1000);
+  el('pcExpire').textContent=Math.floor((expiresAt-Date.now())/1000)+'s';
+
+  el('proposalOverlay').classList.add('active');
+}
+
+function hideProposal(){
+  el('proposalOverlay').classList.remove('active');
+  if(proposalExpireInterval){clearInterval(proposalExpireInterval);proposalExpireInterval=null;}
+  currentProposal=null;
+}
+
+function respondProposal(accepted){
+  if(!currentProposal||!mqClient||!mqClient.connected){
+    hideProposal();
+    return;
+  }
+  const response={
+    proposalId: currentProposal.proposalId,
+    accepted,
+    reason: accepted?'user_accepted':'user_declined',
+    timestamp: new Date().toISOString()
+  };
+  mqClient.publish('victron/mission_response', JSON.stringify(response), {qos:1}, (err)=>{
+    if(err){
+      mlog('PUB ✗','Réponse non envoyée: '+err.message,'err');
+    }else{
+      if(accepted){
+        mlog('ACCEPT ✓', currentProposal.name+' ('+currentProposal.power+'W · '+currentProposal.duration_min+'min)','ok');
+        el('rModeVal').textContent=currentProposal.name+' (en cours…)';
+        el('rModeTs').textContent=now();
+      } else {
+        mlog('DECLINE ✕', currentProposal.name,'err');
+      }
+    }
+    hideProposal();
+  });
+}
+
+// ══════════ MISSION RUNNING TIMER ══════════
+setInterval(()=>{
+  if(!activeMissionExpire){el('mrTimer').textContent='—';return;}
+  const remaining=Math.max(0,Math.floor((new Date(activeMissionExpire)-Date.now())/1000));
+  if(remaining<=0){el('mrTimer').textContent='Fin';return;}
+  const m=Math.floor(remaining/60), s=remaining%60;
+  el('mrTimer').textContent=m+':'+s.toString().padStart(2,'0');
+}, 1000);
+
+// ── Toggle visibilité mot de passe ──
+function togglePass(){
+  const inp=el('inPass'), btn=el('btnPass');
+  if(inp.type==='password'){inp.type='text'; btn.textContent='🙈';}
+  else{inp.type='password'; btn.textContent='👁';}
+}
+</script>
+</body>
+</html>
